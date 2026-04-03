@@ -19,9 +19,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public class LocalTokenManager extends AbstractTokenManager implements ExpirationPolicy {
 
     private final Logger logger = LoggerFactory.getLogger(LocalTokenManager.class);
-    private Map<String, ExpirationWrapper<String>> accessTokenMap = new ConcurrentHashMap<>();
-    private Map<String, ExpirationWrapper<TokenContent>> refreshTokenMap = new ConcurrentHashMap<>();
-    private Map<String, Set<String>> tgtMap = new ConcurrentHashMap<>();
+    private final Map<String, ExpirationWrapper<String>> accessTokenMap = new ConcurrentHashMap<>();
+    private final Map<String, ExpirationWrapper<TokenContent>> refreshTokenMap = new ConcurrentHashMap<>();
+    private final Map<String, Set<String>> tgtMap = new ConcurrentHashMap<>();
 
     public LocalTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize) {
         super(accessTokenTimeout, refreshTokenTimeout, threadPoolSize);

@@ -36,12 +36,20 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
     public AbstractTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize) {
         this.accessTokenTimeout = accessTokenTimeout;
         this.refreshTokenTimeout = refreshTokenTimeout;
+        //增加了命名和拒绝策略
         this.executorService = new ThreadPoolExecutor(
                 threadPoolSize,
                 threadPoolSize,
-                3L, TimeUnit.SECONDS,
-                new LinkedBlockingQueue<>(1000)
+                0L, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(1000),
+                r -> {
+                    Thread t = new Thread(r, "token-manager-" + threadPoolSize);
+                    t.setDaemon(true);
+                    return t;
+                },
+                new ThreadPoolExecutor.CallerRunsPolicy()
         );
+
     }
 
     /**
@@ -77,8 +85,8 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
      * @return
      */
     public TokenContent create(Long userId, String logoutUri, CodeContent codeContent) {
-        String accessToken = "AT-" + UUID.randomUUID().toString().replaceAll("-", "");
-        String refreshToken = "RT-" + UUID.randomUUID().toString().replaceAll("-", "");
+        String accessToken = "AT-" + UUID.randomUUID().toString().replace("-", "");
+        String refreshToken = "RT-" + UUID.randomUUID().toString().replace("-", "");
         TokenContent tc = new TokenContent(accessToken, refreshToken, userId, logoutUri, codeContent.getTgt(), codeContent.getClientId());
         create(refreshToken, tc);
         return tc;
@@ -89,31 +97,21 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
      *
      * @param refreshTokenSet
      */
+    //提交到线程池的目的本来是异步并发执行，但用 future.get() 把调用线程完全阻塞住，等于所有子任务跑完才返回。
+    //感觉这里这相当于用多线程做了单线程能做的事，还额外增加了线程调度的开销。
+    //我是把这里改为了异步运行 让线程池后台处理
     protected void submitRemoveToken(Set<String> refreshTokenSet) {
-        // 用于存储所有的Future对象，以便后续等待所有任务完成
-        List<Future<?>> futures = new ArrayList<>();
-
-        refreshTokenSet.forEach(refreshToken -> {
-            // 发起客户端退出请求，提交任务到线程池并获取Future对象
-            Future<?> future = executorService.submit(() -> {
-                try {
-                    processRemoveToken(refreshToken);
-                } catch (Exception e) {
-                    logger.error("执行删除Token操作出现异常", e);
-                }
-            });
-            futures.add(future);
-        });
-
-        // 等待所有的请求任务都完成
-        for (Future<?> future : futures) {
-            try {
-                future.get();
-            } catch (Exception e) {
-                logger.error("执行删除Token任务出现异常", e);
-            }
-        }
+        refreshTokenSet.forEach(refreshToken ->
+                executorService.submit(() -> {
+                    try {
+                        processRemoveToken(refreshToken);
+                    } catch (Exception e) {
+                        logger.error("执行删除Token操作出现异常, refreshToken: {}", refreshToken, e);
+                    }
+                })
+        );
     }
+
 
     /**
      * 真正执行删除Token
@@ -134,6 +132,12 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
         Map<String, String> headerMap = new HashMap<>();
         headerMap.put(BaseConstant.LOGOUT_PARAMETER_NAME, accessToken);
         HttpUtils.postHeader(redirectUri, headerMap);
+
+        //失败记录
+        String result = HttpUtils.postHeader(redirectUri, headerMap);
+        if (result == null) {
+            logger.warn("客户端退出通知失败, redirectUri: {}", redirectUri);
+        }
     }
 
     public int getAccessTokenTimeout() {
