@@ -1,7 +1,7 @@
 package openjoe.smart.sso.base.util;
 
 import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
+import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
@@ -29,11 +29,33 @@ public class HttpUtils {
 
     private static final Logger logger = LoggerFactory.getLogger(HttpUtils.class);
 
+    // 连接池单例，整个应用共享
+    private static final CloseableHttpClient httpClient;
+
+    static {
+        PoolingHttpClientConnectionManager connManager = new PoolingHttpClientConnectionManager();
+        connManager.setMaxTotal(200);          // 连接池最大连接数
+        connManager.setDefaultMaxPerRoute(50); // 每个路由最大连接数
+
+        RequestConfig requestConfig = RequestConfig.custom()
+                .setConnectTimeout(5000)           // 建立连接超时
+                .setSocketTimeout(5000)            // 读取数据超时
+                .setConnectionRequestTimeout(3000) // 从连接池获取连接超时
+                .build();
+
+        httpClient = HttpClients.custom()
+                .setConnectionManager(connManager)
+                .setDefaultRequestConfig(requestConfig)
+                .disableAutomaticRetries()
+                .build();
+    }
+
+
+    // GET
     public static String get(String url, Map<String, String> paramMap) {
         String result = null;
-        CloseableHttpResponse response = null;
         String realUrl = url;
-        CloseableHttpClient httpClient = HttpClients.createDefault();
+        CloseableHttpResponse response = null;
         try {
             if (paramMap != null && !paramMap.isEmpty()) {
                 List<NameValuePair> params = new ArrayList<>();
@@ -48,7 +70,8 @@ public class HttpUtils {
             if (response != null && response.getStatusLine().getStatusCode() == 200) {
                 HttpEntity entity = response.getEntity();
                 if (entity != null) {
-                    result = EntityUtils.toString(entity);
+                    result = EntityUtils.toString(entity, "UTF-8");
+                    EntityUtils.consume(entity);
                 }
                 logger.debug("http get url: {}, paramMap: {}, result: {}", url, JsonUtils.toString(paramMap), result);
             }
@@ -56,13 +79,13 @@ public class HttpUtils {
         } catch (Exception e) {
             logger.error("http get url: {}, paramMap: {}, result: {}", url, JsonUtils.toString(paramMap), result, e);
         } finally {
-            try {
-                httpClient.close();
-                if (response != null) {
+            // 只关闭 response，不关闭 httpClient（连接池共享）
+            if (response != null) {
+                try {
                     response.close();
+                } catch (IOException e) {
+                    logger.error("", e);
                 }
-            } catch (IOException e) {
-                logger.error("", e);
             }
         }
         return null;
@@ -72,9 +95,11 @@ public class HttpUtils {
         return get(url, null);
     }
 
+
+    // POST
     public static String post(String url, Map<String, String> paramMap, Map<String, String> headerMap) {
         HttpPost httpPost = null;
-        CloseableHttpClient httpClient = null;
+        CloseableHttpResponse response = null;
         try {
             httpPost = new HttpPost(url);
             if (paramMap != null && !paramMap.isEmpty()) {
@@ -84,22 +109,16 @@ public class HttpUtils {
                 }
                 httpPost.setEntity(new UrlEncodedFormEntity(formParams, "UTF-8"));
             }
-            RequestConfig requestConfig = RequestConfig.custom().setSocketTimeout(5000).setConnectTimeout(5000).build();
-            httpPost.setConfig(requestConfig);
-
             if (headerMap != null && !headerMap.isEmpty()) {
                 for (Map.Entry<String, String> headerItem : headerMap.entrySet()) {
                     httpPost.setHeader(headerItem.getKey(), headerItem.getValue());
                 }
             }
-
-            httpClient = HttpClients.custom().disableAutomaticRetries().build();
-
-            HttpResponse response = httpClient.execute(httpPost);
+            response = httpClient.execute(httpPost);
             HttpEntity entity = response.getEntity();
             if (entity != null && response.getStatusLine().getStatusCode() == 200) {
                 String result = EntityUtils.toString(entity, "UTF-8");
-                EntityUtils.consume(entity);
+                EntityUtils.consume(entity); // 确保连接归还连接池
                 logger.debug("http post url: {}, result: {}", url, result);
                 return result;
             }
@@ -111,9 +130,10 @@ public class HttpUtils {
             if (httpPost != null) {
                 httpPost.releaseConnection();
             }
-            if (httpClient != null) {
+            // 只关闭 response，不关闭 httpClient（连接池共享）
+            if (response != null) {
                 try {
-                    httpClient.close();
+                    response.close();
                 } catch (IOException e) {
                     logger.error("", e);
                 }

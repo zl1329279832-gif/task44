@@ -28,7 +28,7 @@ public class ExpirationWrapper<T> {
         super();
         this.object = object;
         this.expiresIn = expiresIn;
-        this.expired = System.currentTimeMillis() + expiresIn * 1000;
+        this.expired = System.currentTimeMillis() + (long)expiresIn * 1000;
     }
 
     public T getObject() {

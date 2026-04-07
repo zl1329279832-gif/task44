@@ -16,7 +16,7 @@ public class TokenWrapper extends ExpirationWrapper<Token> {
 
     public TokenWrapper(Token token, int expiresIn, int refreshExpiresIn) {
         super(token, expiresIn);
-        this.refreshExpired = System.currentTimeMillis() + refreshExpiresIn * 1000;
+        this.refreshExpired = System.currentTimeMillis() + (long)refreshExpiresIn * 1000;
     }
 
     public long getRefreshExpired() {

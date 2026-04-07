@@ -18,7 +18,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class LocalTokenStorage implements TokenStorage, ExpirationPolicy {
     private final Logger logger = LoggerFactory.getLogger(LocalTokenStorage.class);
     private final Map<String, TokenWrapper> accessTokenMap = new ConcurrentHashMap<>();
-    private Map<String, ExpirationWrapper<String>> refreshTokenMap = new ConcurrentHashMap<>();
+    private final Map<String, ExpirationWrapper<String>> refreshTokenMap = new ConcurrentHashMap<>();
 
     @Override
     public void create(String accessToken, TokenWrapper wrapper) {
