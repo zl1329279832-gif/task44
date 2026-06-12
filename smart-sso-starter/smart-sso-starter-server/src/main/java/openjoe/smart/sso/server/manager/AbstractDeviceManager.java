@@ -52,8 +52,9 @@ public abstract class AbstractDeviceManager implements LifecycleManager<LoginDev
      * @param oldRefreshToken 旧的refreshToken
      * @param newRefreshToken 新的refreshToken
      * @param updateTime      更新时间戳（毫秒）
+     * @return true=更新成功，false=旧refreshToken已不存在（已被并发刷新消费或设备已下线）
      */
-    public abstract void updateRefreshToken(String oldRefreshToken, String newRefreshToken, long updateTime);
+    public abstract boolean updateRefreshToken(String oldRefreshToken, String newRefreshToken, long updateTime);
 
     /**
      * 移除用户所有登录设备

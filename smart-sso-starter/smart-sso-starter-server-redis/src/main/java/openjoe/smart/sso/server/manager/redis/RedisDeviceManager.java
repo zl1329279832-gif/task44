@@ -84,17 +84,17 @@ public class RedisDeviceManager extends AbstractDeviceManager {
     }
 
     @Override
-    public void updateRefreshToken(String oldRefreshToken, String newRefreshToken, long updateTime) {
+    public boolean updateRefreshToken(String oldRefreshToken, String newRefreshToken, long updateTime) {
         String json = redisTemplate.opsForValue().get(DEVICE_RT_KEY + oldRefreshToken);
         if (!StringUtils.hasLength(json)) {
-            return;
+            return false;
         }
         // 删除旧记录
         redisTemplate.delete(DEVICE_RT_KEY + oldRefreshToken);
 
         LoginDevice device = JsonUtils.parseObject(json, LoginDevice.class);
         if (device == null) {
-            return;
+            return false;
         }
 
         // 更新设备信息
@@ -109,6 +109,7 @@ public class RedisDeviceManager extends AbstractDeviceManager {
         redisTemplate.expire(DEVICE_USER_KEY + device.getUserId(), timeout, TimeUnit.SECONDS);
 
         logger.debug("Redis设备refreshToken更新, old:{}, new:{}", oldRefreshToken, newRefreshToken);
+        return true;
     }
 
     @Override

@@ -135,6 +135,11 @@ public class SSOOAuth2Controller {
             return Result.error("refreshToken有误或已过期");
         }
 
+        // 校验设备记录是否仍存在（设备下线时记录会被立即删除，而token可能尚未清理）
+        if (deviceManager != null && deviceManager.get(refreshToken) == null) {
+            return Result.error("设备已下线，无法刷新");
+        }
+
         Result<TokenUser> userResult = userManager.getTokenUser(atContent.getUserId());
         if (!userResult.isSuccess()) {
             return Result.error(userResult.getMessage());
@@ -145,7 +150,12 @@ public class SSOOAuth2Controller {
 
         // 更新设备记录的refreshToken和最后刷新时间
         if (deviceManager != null) {
-            deviceManager.updateRefreshToken(refreshToken, tc.getRefreshToken(), System.currentTimeMillis());
+            boolean updated = deviceManager.updateRefreshToken(refreshToken, tc.getRefreshToken(), System.currentTimeMillis());
+            if (!updated) {
+                // 旧设备记录已被并发刷新消费或设备已下线，清理刚创建的孤立token
+                tokenManager.remove(tc.getRefreshToken());
+                return Result.error("设备凭证已变更，请重新登录");
+            }
         }
 
         // 删除原有token

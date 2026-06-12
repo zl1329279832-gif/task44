@@ -93,14 +93,14 @@ public class LocalDeviceManager extends AbstractDeviceManager implements Expirat
     }
 
     @Override
-    public void updateRefreshToken(String oldRefreshToken, String newRefreshToken, long updateTime) {
+    public boolean updateRefreshToken(String oldRefreshToken, String newRefreshToken, long updateTime) {
         ExpirationWrapper<LoginDevice> wrapper = deviceMap.remove(oldRefreshToken);
         if (wrapper == null) {
-            return;
+            return false;
         }
         LoginDevice device = wrapper.getObject();
         if (device == null) {
-            return;
+            return false;
         }
         device.setRefreshToken(newRefreshToken);
         device.setLastRefreshTime(updateTime);
@@ -114,6 +114,7 @@ public class LocalDeviceManager extends AbstractDeviceManager implements Expirat
             rtSet.add(newRefreshToken);
         }
         logger.debug("设备refreshToken更新, old:{}, new:{}", oldRefreshToken, newRefreshToken);
+        return true;
     }
 
     @Override
