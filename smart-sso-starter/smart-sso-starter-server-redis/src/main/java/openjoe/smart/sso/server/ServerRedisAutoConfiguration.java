@@ -1,9 +1,11 @@
 package openjoe.smart.sso.server;
 
 import openjoe.smart.sso.server.manager.AbstractCodeManager;
+import openjoe.smart.sso.server.manager.AbstractLoginDeviceManager;
 import openjoe.smart.sso.server.manager.AbstractTicketGrantingTicketManager;
 import openjoe.smart.sso.server.manager.AbstractTokenManager;
 import openjoe.smart.sso.server.manager.redis.RedisCodeManager;
+import openjoe.smart.sso.server.manager.redis.RedisLoginDeviceManager;
 import openjoe.smart.sso.server.manager.redis.RedisTicketGrantingTicketManager;
 import openjoe.smart.sso.server.manager.redis.RedisTokenManager;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
@@ -25,9 +27,17 @@ public class ServerRedisAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(AbstractLoginDeviceManager.class)
+    public AbstractLoginDeviceManager deviceManager(ServerProperties properties, StringRedisTemplate redisTemplate) {
+        return new RedisLoginDeviceManager(properties.getTimeout(), redisTemplate);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(AbstractTokenManager.class)
-    public AbstractTokenManager tokenManager(ServerProperties properties, StringRedisTemplate redisTemplate) {
-        return new RedisTokenManager(properties.getAccessTokenTimeout(), properties.getTimeout(), properties.getThreadPoolSize(), redisTemplate);
+    public AbstractTokenManager tokenManager(ServerProperties properties, AbstractLoginDeviceManager deviceManager, StringRedisTemplate redisTemplate) {
+        RedisTokenManager tokenManager = new RedisTokenManager(properties.getAccessTokenTimeout(), properties.getTimeout(), properties.getThreadPoolSize(), redisTemplate);
+        tokenManager.setDeviceManager(deviceManager);
+        return tokenManager;
     }
 
     @Bean

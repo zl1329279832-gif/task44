@@ -118,6 +118,9 @@ public class RedisTokenManager extends AbstractTokenManager {
         // 发起客户端退出请求
         logger.debug("发起客户端退出请求, accessToken:{}, refreshToken:{}, logoutUri:{}", tokenContent.getAccessToken(), refreshToken, tokenContent.getLogoutUri());
         sendLogoutRequest(tokenContent.getLogoutUri(), tokenContent.getAccessToken());
+
+        // 清理设备记录
+        onTokenRemoved(tokenContent);
     }
 
     @Override

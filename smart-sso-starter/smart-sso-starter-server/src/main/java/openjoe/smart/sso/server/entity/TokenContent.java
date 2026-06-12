@@ -11,6 +11,7 @@ public class TokenContent extends CodeContent {
     private String refreshToken;
     private Long userId;
     private String logoutUri;
+    private String deviceId;
 
     public TokenContent() {
         super();
@@ -54,5 +55,13 @@ public class TokenContent extends CodeContent {
 
     public void setLogoutUri(String logoutUri) {
         this.logoutUri = logoutUri;
+    }
+
+    public String getDeviceId() {
+        return deviceId;
+    }
+
+    public void setDeviceId(String deviceId) {
+        this.deviceId = deviceId;
     }
 }

@@ -1,9 +1,11 @@
 package openjoe.smart.sso.server;
 
 import openjoe.smart.sso.server.manager.AbstractCodeManager;
+import openjoe.smart.sso.server.manager.AbstractLoginDeviceManager;
 import openjoe.smart.sso.server.manager.AbstractTicketGrantingTicketManager;
 import openjoe.smart.sso.server.manager.AbstractTokenManager;
 import openjoe.smart.sso.server.manager.local.LocalCodeManager;
+import openjoe.smart.sso.server.manager.local.LocalLoginDeviceManager;
 import openjoe.smart.sso.server.manager.local.LocalTicketGrantingTicketManager;
 import openjoe.smart.sso.server.manager.local.LocalTokenManager;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -22,9 +24,17 @@ public class ServerAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(AbstractLoginDeviceManager.class)
+    public AbstractLoginDeviceManager deviceManager(ServerProperties properties) {
+        return new LocalLoginDeviceManager(properties.getTimeout());
+    }
+
+    @Bean
     @ConditionalOnMissingBean(AbstractTokenManager.class)
-    public AbstractTokenManager tokenManager(ServerProperties properties) {
-        return new LocalTokenManager(properties.getAccessTokenTimeout(), properties.getTimeout(), properties.getThreadPoolSize());
+    public AbstractTokenManager tokenManager(ServerProperties properties, AbstractLoginDeviceManager deviceManager) {
+        LocalTokenManager tokenManager = new LocalTokenManager(properties.getAccessTokenTimeout(), properties.getTimeout(), properties.getThreadPoolSize());
+        tokenManager.setDeviceManager(deviceManager);
+        return tokenManager;
     }
 
     @Bean

@@ -31,6 +31,8 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
      */
     private int refreshTokenTimeout;
 
+    private AbstractLoginDeviceManager deviceManager;
+
     protected final ExecutorService executorService;
 
     public AbstractTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize) {
@@ -74,20 +76,35 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
      * @return
      */
     public TokenContent create(TokenContent tc) {
-        return create(tc.getUserId(), tc.getLogoutUri(), tc);
+        return create(tc.getUserId(), tc.getLogoutUri(), tc, tc.getDeviceId());
     }
 
     /**
      * 创建AccessToken
      *
      * @param userId
+     * @param logoutUri
      * @param codeContent
      * @return
      */
     public TokenContent create(Long userId, String logoutUri, CodeContent codeContent) {
+        return create(userId, logoutUri, codeContent, null);
+    }
+
+    /**
+     * 创建AccessToken（携带设备ID）
+     *
+     * @param userId
+     * @param logoutUri
+     * @param codeContent
+     * @param deviceId
+     * @return
+     */
+    public TokenContent create(Long userId, String logoutUri, CodeContent codeContent, String deviceId) {
         String accessToken = "AT-" + UUID.randomUUID().toString().replace("-", "");
         String refreshToken = "RT-" + UUID.randomUUID().toString().replace("-", "");
         TokenContent tc = new TokenContent(accessToken, refreshToken, userId, logoutUri, codeContent.getTgt(), codeContent.getClientId());
+        tc.setDeviceId(deviceId);
         create(refreshToken, tc);
         return tc;
     }
@@ -154,5 +171,28 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
 
     public void setRefreshTokenTimeout(int refreshTokenTimeout) {
         this.refreshTokenTimeout = refreshTokenTimeout;
+    }
+
+    public AbstractLoginDeviceManager getDeviceManager() {
+        return deviceManager;
+    }
+
+    public void setDeviceManager(AbstractLoginDeviceManager deviceManager) {
+        this.deviceManager = deviceManager;
+    }
+
+    /**
+     * Token被移除后的回调，清理对应设备记录
+     *
+     * @param tokenContent
+     */
+    protected void onTokenRemoved(TokenContent tokenContent) {
+        if (deviceManager != null && tokenContent != null && tokenContent.getDeviceId() != null) {
+            try {
+                deviceManager.remove(tokenContent.getDeviceId());
+            } catch (Exception e) {
+                logger.error("删除设备记录失败, deviceId: {}", tokenContent.getDeviceId(), e);
+            }
+        }
     }
 }

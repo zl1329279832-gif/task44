@@ -1,15 +1,19 @@
 package openjoe.smart.sso.server.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import openjoe.smart.sso.base.constant.BaseConstant;
 import openjoe.smart.sso.base.entity.Result;
 import openjoe.smart.sso.base.entity.Token;
 import openjoe.smart.sso.base.entity.TokenUser;
 import openjoe.smart.sso.base.enums.GrantTypeEnum;
 import openjoe.smart.sso.server.entity.CodeContent;
+import openjoe.smart.sso.server.entity.LoginDeviceContent;
 import openjoe.smart.sso.server.entity.TicketGrantingTicketContent;
 import openjoe.smart.sso.server.entity.TokenContent;
 import openjoe.smart.sso.server.manager.*;
+import openjoe.smart.sso.server.util.DeviceIdGenerator;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -34,6 +38,8 @@ public class SSOOAuth2Controller {
     private AbstractTokenManager tokenManager;
     @Autowired
     private AbstractTicketGrantingTicketManager tgtManager;
+    @Autowired
+    private AbstractLoginDeviceManager deviceManager;
 
     /**
      * 获取accessToken
@@ -49,7 +55,9 @@ public class SSOOAuth2Controller {
             @RequestParam(value = BaseConstant.CLIENT_ID) String clientId,
             @RequestParam(value = BaseConstant.CLIENT_SECRET) String clientSecret,
             @RequestParam(value = BaseConstant.AUTH_CODE) String code,
-            @RequestParam(value = BaseConstant.LOGOUT_URI) String logoutUri) {
+            @RequestParam(value = BaseConstant.LOGOUT_URI) String logoutUri,
+            @RequestParam(value = "deviceId", required = false) String deviceId,
+            HttpServletRequest request) {
 
         // 校验授权码方式
         if (!GrantTypeEnum.AUTHORIZATION_CODE.getValue().equals(grantType)) {
@@ -80,8 +88,21 @@ public class SSOOAuth2Controller {
             return Result.error(userResult.getMessage());
         }
 
+        // 生成设备指纹
+        String ip = request.getRemoteAddr();
+        String userAgent = request.getHeader("User-Agent");
+        if (!StringUtils.hasLength(deviceId)) {
+            deviceId = DeviceIdGenerator.generate(clientId, ip, userAgent);
+        }
+
         // 创建token
-        TokenContent tc = tokenManager.create(tgtContent.getUserId(), logoutUri, codeContent);
+        TokenContent tc = tokenManager.create(tgtContent.getUserId(), logoutUri, codeContent, deviceId);
+
+        // 记录登录设备
+        long now = System.currentTimeMillis();
+        LoginDeviceContent device = new LoginDeviceContent(deviceId, clientId, tgtContent.getUserId(),
+                ip, userAgent, now, now, tc.getRefreshToken(), tc.getAccessToken(), codeContent.getTgt());
+        deviceManager.create(deviceId, device);
 
         // 刷新服务端凭证时效
         tgtManager.refresh(tc.getTgt());
@@ -122,6 +143,11 @@ public class SSOOAuth2Controller {
 
         // 创建新token
         TokenContent tc = tokenManager.create(atContent);
+
+        // 更新设备活跃时间
+        if (StringUtils.hasLength(atContent.getDeviceId())) {
+            deviceManager.updateOnRefresh(atContent.getDeviceId(), tc.getRefreshToken(), tc.getAccessToken());
+        }
 
         // 刷新服务端凭证时效
         tgtManager.refresh(tc.getTgt());
