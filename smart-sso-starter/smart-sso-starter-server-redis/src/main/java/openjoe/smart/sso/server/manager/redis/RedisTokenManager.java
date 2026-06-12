@@ -2,6 +2,7 @@ package openjoe.smart.sso.server.manager.redis;
 
 import openjoe.smart.sso.base.util.JsonUtils;
 import openjoe.smart.sso.server.entity.TokenContent;
+import openjoe.smart.sso.server.manager.AbstractDeviceManager;
 import openjoe.smart.sso.server.manager.AbstractTokenManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,6 +32,11 @@ public class RedisTokenManager extends AbstractTokenManager {
 
     public RedisTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize, StringRedisTemplate redisTemplate) {
         super(accessTokenTimeout, refreshTokenTimeout, threadPoolSize);
+        this.redisTemplate = redisTemplate;
+    }
+
+    public RedisTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize, StringRedisTemplate redisTemplate, AbstractDeviceManager deviceManager) {
+        super(accessTokenTimeout, refreshTokenTimeout, threadPoolSize, deviceManager);
         this.redisTemplate = redisTemplate;
     }
 
@@ -85,6 +91,9 @@ public class RedisTokenManager extends AbstractTokenManager {
 
         // 删除tgt映射中的refreshToken
         redisTemplate.opsForSet().remove(TGT_REFRESH_TOKEN_KEY + tokenContent.getTgt(), refreshToken);
+
+        // 清理设备记录
+        removeDevice(refreshToken);
     }
 
     @Override
@@ -101,6 +110,9 @@ public class RedisTokenManager extends AbstractTokenManager {
 
     @Override
     public void processRemoveToken(String refreshToken) {
+        // 清理设备记录
+        removeDevice(refreshToken);
+
         String tc = redisTemplate.opsForValue().get(REFRESH_TOKEN_KEY + refreshToken);
         if (!StringUtils.hasLength(tc)) {
             return;

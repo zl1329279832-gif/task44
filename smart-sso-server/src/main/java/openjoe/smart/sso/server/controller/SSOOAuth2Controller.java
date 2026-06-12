@@ -1,11 +1,13 @@
 package openjoe.smart.sso.server.controller;
 
+import jakarta.servlet.http.HttpServletRequest;
 import openjoe.smart.sso.base.constant.BaseConstant;
 import openjoe.smart.sso.base.entity.Result;
 import openjoe.smart.sso.base.entity.Token;
 import openjoe.smart.sso.base.entity.TokenUser;
 import openjoe.smart.sso.base.enums.GrantTypeEnum;
 import openjoe.smart.sso.server.entity.CodeContent;
+import openjoe.smart.sso.server.entity.LoginDevice;
 import openjoe.smart.sso.server.entity.TicketGrantingTicketContent;
 import openjoe.smart.sso.server.entity.TokenContent;
 import openjoe.smart.sso.server.manager.*;
@@ -24,6 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping(BaseConstant.AUTH_PATH)
 public class SSOOAuth2Controller {
 
+    private static final String DEVICE_FINGERPRINT_HEADER = "X-Device-Fingerprint";
+
     @Autowired
     private AppManager appManager;
     @Autowired
@@ -34,6 +38,8 @@ public class SSOOAuth2Controller {
     private AbstractTokenManager tokenManager;
     @Autowired
     private AbstractTicketGrantingTicketManager tgtManager;
+    @Autowired(required = false)
+    private AbstractDeviceManager deviceManager;
 
     /**
      * 获取accessToken
@@ -41,6 +47,7 @@ public class SSOOAuth2Controller {
      * @param clientId
      * @param clientSecret
      * @param code
+     * @param request
      * @return
      */
     @RequestMapping(value = "/access-token", method = RequestMethod.GET)
@@ -49,7 +56,8 @@ public class SSOOAuth2Controller {
             @RequestParam(value = BaseConstant.CLIENT_ID) String clientId,
             @RequestParam(value = BaseConstant.CLIENT_SECRET) String clientSecret,
             @RequestParam(value = BaseConstant.AUTH_CODE) String code,
-            @RequestParam(value = BaseConstant.LOGOUT_URI) String logoutUri) {
+            @RequestParam(value = BaseConstant.LOGOUT_URI) String logoutUri,
+            HttpServletRequest request) {
 
         // 校验授权码方式
         if (!GrantTypeEnum.AUTHORIZATION_CODE.getValue().equals(grantType)) {
@@ -86,6 +94,21 @@ public class SSOOAuth2Controller {
         // 刷新服务端凭证时效
         tgtManager.refresh(tc.getTgt());
 
+        // 记录登录设备
+        if (deviceManager != null) {
+            String ip = getClientIp(request);
+            String userAgent = request.getHeader("User-Agent");
+            String fingerprint = request.getHeader(DEVICE_FINGERPRINT_HEADER);
+            if (fingerprint == null || fingerprint.isEmpty()) {
+                fingerprint = generateFingerprint(userAgent, ip);
+            }
+            long now = System.currentTimeMillis();
+            LoginDevice device = new LoginDevice(
+                    tgtContent.getUserId(), clientId, tc.getRefreshToken(),
+                    fingerprint, ip, userAgent, now, now);
+            deviceManager.create(tc.getRefreshToken(), device);
+        }
+
         // 返回token
         return Result.success(new Token(tc.getAccessToken(), tokenManager.getAccessTokenTimeout(), tc.getRefreshToken(),
                 tokenManager.getRefreshTokenTimeout(), userResult.getData()));
@@ -117,11 +140,16 @@ public class SSOOAuth2Controller {
             return Result.error(userResult.getMessage());
         }
 
+        // 创建新token（先创建再删旧，确保新RT可用于设备记录更新）
+        TokenContent tc = tokenManager.create(atContent);
+
+        // 更新设备记录的refreshToken和最后刷新时间
+        if (deviceManager != null) {
+            deviceManager.updateRefreshToken(refreshToken, tc.getRefreshToken(), System.currentTimeMillis());
+        }
+
         // 删除原有token
         tokenManager.remove(refreshToken);
-
-        // 创建新token
-        TokenContent tc = tokenManager.create(atContent);
 
         // 刷新服务端凭证时效
         tgtManager.refresh(tc.getTgt());
@@ -129,5 +157,31 @@ public class SSOOAuth2Controller {
         // 返回新token
         return Result.success(new Token(tc.getAccessToken(), tokenManager.getAccessTokenTimeout(), tc.getRefreshToken(),
                 tokenManager.getRefreshTokenTimeout(), userResult.getData()));
+    }
+
+    /**
+     * 获取客户端真实IP
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getHeader("X-Real-IP");
+        }
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        // 多个代理时取第一个
+        if (ip != null && ip.contains(",")) {
+            ip = ip.split(",")[0].trim();
+        }
+        return ip;
+    }
+
+    /**
+     * 根据User-Agent和IP生成设备指纹
+     */
+    private String generateFingerprint(String userAgent, String ip) {
+        String raw = (userAgent != null ? userAgent : "") + "|" + (ip != null ? ip : "");
+        return String.valueOf(raw.hashCode());
     }
 }

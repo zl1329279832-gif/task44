@@ -3,6 +3,7 @@ package openjoe.smart.sso.server.manager.local;
 import openjoe.smart.sso.base.entity.ExpirationPolicy;
 import openjoe.smart.sso.base.entity.ExpirationWrapper;
 import openjoe.smart.sso.server.entity.TokenContent;
+import openjoe.smart.sso.server.manager.AbstractDeviceManager;
 import openjoe.smart.sso.server.manager.AbstractTokenManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,10 @@ public class LocalTokenManager extends AbstractTokenManager implements Expiratio
 
     public LocalTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize) {
         super(accessTokenTimeout, refreshTokenTimeout, threadPoolSize);
+    }
+
+    public LocalTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize, AbstractDeviceManager deviceManager) {
+        super(accessTokenTimeout, refreshTokenTimeout, threadPoolSize, deviceManager);
     }
 
     @Override
@@ -71,10 +76,12 @@ public class LocalTokenManager extends AbstractTokenManager implements Expiratio
 
         // 删除tgt映射中的refreshToken
         Set<String> refreshTokenSet = tgtMap.get(wrapper.getObject().getTgt());
-        if (CollectionUtils.isEmpty(refreshTokenSet)) {
-            return;
+        if (!CollectionUtils.isEmpty(refreshTokenSet)) {
+            refreshTokenSet.remove(refreshToken);
         }
-        refreshTokenSet.remove(refreshToken);
+
+        // 清理设备记录
+        removeDevice(refreshToken);
     }
 
     @Override
@@ -89,6 +96,9 @@ public class LocalTokenManager extends AbstractTokenManager implements Expiratio
 
     @Override
     public void processRemoveToken(String refreshToken) {
+        // 清理设备记录
+        removeDevice(refreshToken);
+
         // 删除refreshToken
         ExpirationWrapper<TokenContent> wrapper = refreshTokenMap.remove(refreshToken);
         if (wrapper == null) {

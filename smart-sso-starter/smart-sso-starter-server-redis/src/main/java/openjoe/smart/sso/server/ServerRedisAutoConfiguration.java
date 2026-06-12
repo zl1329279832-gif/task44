@@ -1,9 +1,11 @@
 package openjoe.smart.sso.server;
 
 import openjoe.smart.sso.server.manager.AbstractCodeManager;
+import openjoe.smart.sso.server.manager.AbstractDeviceManager;
 import openjoe.smart.sso.server.manager.AbstractTicketGrantingTicketManager;
 import openjoe.smart.sso.server.manager.AbstractTokenManager;
 import openjoe.smart.sso.server.manager.redis.RedisCodeManager;
+import openjoe.smart.sso.server.manager.redis.RedisDeviceManager;
 import openjoe.smart.sso.server.manager.redis.RedisTicketGrantingTicketManager;
 import openjoe.smart.sso.server.manager.redis.RedisTokenManager;
 import org.springframework.boot.autoconfigure.AutoConfigureBefore;
@@ -25,14 +27,24 @@ public class ServerRedisAutoConfiguration {
     }
 
     @Bean
+    @ConditionalOnMissingBean(AbstractDeviceManager.class)
+    public AbstractDeviceManager deviceManager(ServerProperties properties, StringRedisTemplate redisTemplate) {
+        return new RedisDeviceManager(properties.getTimeout(), redisTemplate);
+    }
+
+    @Bean
     @ConditionalOnMissingBean(AbstractTokenManager.class)
-    public AbstractTokenManager tokenManager(ServerProperties properties, StringRedisTemplate redisTemplate) {
-        return new RedisTokenManager(properties.getAccessTokenTimeout(), properties.getTimeout(), properties.getThreadPoolSize(), redisTemplate);
+    public AbstractTokenManager tokenManager(ServerProperties properties, StringRedisTemplate redisTemplate,
+            AbstractDeviceManager deviceManager) {
+        return new RedisTokenManager(properties.getAccessTokenTimeout(), properties.getTimeout(),
+                properties.getThreadPoolSize(), redisTemplate, deviceManager);
     }
 
     @Bean
     @ConditionalOnMissingBean(AbstractTicketGrantingTicketManager.class)
-    public AbstractTicketGrantingTicketManager tgtManager(ServerProperties properties, AbstractTokenManager tokenManager, StringRedisTemplate redisTemplate) {
-        return new RedisTicketGrantingTicketManager(properties.getTimeout(), properties.getCookieName(), tokenManager, redisTemplate);
+    public AbstractTicketGrantingTicketManager tgtManager(ServerProperties properties,
+            AbstractTokenManager tokenManager, StringRedisTemplate redisTemplate) {
+        return new RedisTicketGrantingTicketManager(properties.getTimeout(), properties.getCookieName(),
+                tokenManager, redisTemplate);
     }
 }

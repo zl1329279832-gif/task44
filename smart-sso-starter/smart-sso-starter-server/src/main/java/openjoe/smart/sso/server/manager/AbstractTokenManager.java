@@ -33,9 +33,19 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
 
     protected final ExecutorService executorService;
 
+    /**
+     * 登录设备管理器（可选）
+     */
+    protected AbstractDeviceManager deviceManager;
+
     public AbstractTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize) {
+        this(accessTokenTimeout, refreshTokenTimeout, threadPoolSize, null);
+    }
+
+    public AbstractTokenManager(int accessTokenTimeout, int refreshTokenTimeout, int threadPoolSize, AbstractDeviceManager deviceManager) {
         this.accessTokenTimeout = accessTokenTimeout;
         this.refreshTokenTimeout = refreshTokenTimeout;
+        this.deviceManager = deviceManager;
         //增加了命名和拒绝策略
         this.executorService = new ThreadPoolExecutor(
                 threadPoolSize,
@@ -49,7 +59,21 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
                 },
                 new ThreadPoolExecutor.CallerRunsPolicy()
         );
+    }
 
+    /**
+     * 清理设备记录（如果设备管理器已配置）
+     *
+     * @param refreshToken
+     */
+    protected void removeDevice(String refreshToken) {
+        if (deviceManager != null) {
+            try {
+                deviceManager.remove(refreshToken);
+            } catch (Exception e) {
+                logger.warn("清理设备记录失败, refreshToken: {}", refreshToken, e);
+            }
+        }
     }
 
     /**
