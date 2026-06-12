@@ -40,7 +40,7 @@ public class LocalTokenManager extends AbstractTokenManager implements Expiratio
         ExpirationWrapper<TokenContent> rtWrapper = new ExpirationWrapper(tokenContent, getRefreshTokenTimeout());
         refreshTokenMap.put(refreshToken, rtWrapper);
 
-        tgtMap.computeIfAbsent(tokenContent.getTgt(), a -> new HashSet<>()).add(refreshToken);
+        tgtMap.computeIfAbsent(tokenContent.getTgt(), a -> ConcurrentHashMap.newKeySet()).add(refreshToken);
         logger.debug("调用凭证创建成功, accessToken:{}, refreshToken:{}", tokenContent.getAccessToken(), refreshToken);
     }
 
@@ -85,6 +85,28 @@ public class LocalTokenManager extends AbstractTokenManager implements Expiratio
     }
 
     @Override
+    public TokenContent consumeRefreshToken(String refreshToken) {
+        // ConcurrentHashMap.remove是原子操作，确保只有一个线程能成功消费同一refreshToken
+        ExpirationWrapper<TokenContent> wrapper = refreshTokenMap.remove(refreshToken);
+        if (wrapper == null || wrapper.checkExpired()) {
+            return null;
+        }
+        TokenContent tc = wrapper.getObject();
+        if (tc == null) {
+            return null;
+        }
+        // 移除accessToken
+        accessTokenMap.remove(tc.getAccessToken());
+        // 移除tgt映射中的refreshToken
+        Set<String> rtSet = tgtMap.get(tc.getTgt());
+        if (!CollectionUtils.isEmpty(rtSet)) {
+            rtSet.remove(refreshToken);
+        }
+        // 不清理设备记录 —— 由调用方通过updateRefreshToken迁移到新RT
+        return tc;
+    }
+
+    @Override
     public void removeByTgt(String tgt) {
         // 删除tgt映射中的refreshToken集合
         Set<String> refreshTokenSet = tgtMap.remove(tgt);
@@ -96,11 +118,12 @@ public class LocalTokenManager extends AbstractTokenManager implements Expiratio
 
     @Override
     public void processRemoveToken(String refreshToken) {
+        // 先移除refreshToken，防止并发刷新在设备记录清理期间成功
+        ExpirationWrapper<TokenContent> wrapper = refreshTokenMap.remove(refreshToken);
+
         // 清理设备记录
         removeDevice(refreshToken);
 
-        // 删除refreshToken
-        ExpirationWrapper<TokenContent> wrapper = refreshTokenMap.remove(refreshToken);
         if (wrapper == null) {
             return;
         }

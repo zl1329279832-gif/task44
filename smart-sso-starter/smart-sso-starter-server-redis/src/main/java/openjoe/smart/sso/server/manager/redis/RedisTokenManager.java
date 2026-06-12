@@ -97,6 +97,25 @@ public class RedisTokenManager extends AbstractTokenManager {
     }
 
     @Override
+    public TokenContent consumeRefreshToken(String refreshToken) {
+        // getAndDelete是Redis原子操作，确保只有一个线程能成功消费同一refreshToken
+        String tc = redisTemplate.opsForValue().getAndDelete(REFRESH_TOKEN_KEY + refreshToken);
+        if (!StringUtils.hasLength(tc)) {
+            return null;
+        }
+        TokenContent tokenContent = JsonUtils.parseObject(tc, TokenContent.class);
+        if (tokenContent == null) {
+            return null;
+        }
+        // 移除accessToken
+        redisTemplate.delete(ACCESS_TOKEN_KEY + tokenContent.getAccessToken());
+        // 移除tgt映射中的refreshToken
+        redisTemplate.opsForSet().remove(TGT_REFRESH_TOKEN_KEY + tokenContent.getTgt(), refreshToken);
+        // 不清理设备记录 —— 由调用方通过updateRefreshToken迁移到新RT
+        return tokenContent;
+    }
+
+    @Override
     public void removeByTgt(String tgt) {
         Set<String> refreshTokenSet = redisTemplate.opsForSet().members(TGT_REFRESH_TOKEN_KEY + tgt);
         if (CollectionUtils.isEmpty(refreshTokenSet)) {
@@ -110,16 +129,15 @@ public class RedisTokenManager extends AbstractTokenManager {
 
     @Override
     public void processRemoveToken(String refreshToken) {
+        // 先原子获取并删除refreshToken，防止并发刷新在设备记录清理期间成功
+        String tc = redisTemplate.opsForValue().getAndDelete(REFRESH_TOKEN_KEY + refreshToken);
+
         // 清理设备记录
         removeDevice(refreshToken);
 
-        String tc = redisTemplate.opsForValue().get(REFRESH_TOKEN_KEY + refreshToken);
         if (!StringUtils.hasLength(tc)) {
             return;
         }
-        // 删除refreshToken
-        redisTemplate.delete(REFRESH_TOKEN_KEY + refreshToken);
-
         TokenContent tokenContent = JsonUtils.parseObject(tc, TokenContent.class);
         if (tokenContent == null) {
             return;

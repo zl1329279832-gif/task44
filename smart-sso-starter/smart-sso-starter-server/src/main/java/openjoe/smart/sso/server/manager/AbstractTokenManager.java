@@ -92,6 +92,15 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
     public abstract void removeByTgt(String tgt);
 
     /**
+     * 原子性地获取并移除refreshToken（用于token刷新流程，防止并发刷新）
+     * 移除refreshToken及其关联的accessToken和tgt映射，但不清理设备记录
+     *
+     * @param refreshToken
+     * @return TokenContent，如果不存在或已被其他线程消费则返回null
+     */
+    public abstract TokenContent consumeRefreshToken(String refreshToken);
+
+    /**
      * 创建AccessToken
      *
      * @param tc
@@ -155,9 +164,6 @@ public abstract class AbstractTokenManager implements LifecycleManager<TokenCont
     protected void sendLogoutRequest(String redirectUri, String accessToken) {
         Map<String, String> headerMap = new HashMap<>();
         headerMap.put(BaseConstant.LOGOUT_PARAMETER_NAME, accessToken);
-        HttpUtils.postHeader(redirectUri, headerMap);
-
-        //失败记录
         String result = HttpUtils.postHeader(redirectUri, headerMap);
         if (result == null) {
             logger.warn("客户端退出通知失败, redirectUri: {}", redirectUri);

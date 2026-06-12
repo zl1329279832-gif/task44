@@ -70,6 +70,8 @@ public class DeviceController {
         for (LoginDevice device : devices) {
             tokenManager.processRemoveToken(device.getRefreshToken());
         }
+        // 兜底清理：移除处理期间因并发刷新而新产生的设备记录
+        deviceManager.removeByUserId(userId);
         return Result.success();
     }
 }

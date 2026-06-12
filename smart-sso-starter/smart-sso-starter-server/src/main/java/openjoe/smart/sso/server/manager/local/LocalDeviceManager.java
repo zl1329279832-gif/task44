@@ -83,11 +83,19 @@ public class LocalDeviceManager extends AbstractDeviceManager implements Expirat
             return Collections.emptyList();
         }
         List<LoginDevice> result = new ArrayList<>();
+        List<String> staleEntries = new ArrayList<>();
         for (String rt : rtSet) {
             ExpirationWrapper<LoginDevice> wrapper = deviceMap.get(rt);
             if (wrapper != null && !wrapper.checkExpired()) {
                 result.add(wrapper.getObject());
+            } else {
+                // 清理过期或已失效的引用，与Redis实现保持一致
+                staleEntries.add(rt);
             }
+        }
+        staleEntries.forEach(rtSet::remove);
+        if (rtSet.isEmpty()) {
+            userDeviceMap.remove(userId);
         }
         return result;
     }

@@ -140,16 +140,19 @@ public class SSOOAuth2Controller {
             return Result.error(userResult.getMessage());
         }
 
-        // 创建新token（先创建再删旧，确保新RT可用于设备记录更新）
-        TokenContent tc = tokenManager.create(atContent);
+        // 原子消费旧refreshToken，防止并发刷新产生重复设备记录
+        TokenContent consumed = tokenManager.consumeRefreshToken(refreshToken);
+        if (consumed == null) {
+            return Result.error("refreshToken有误或已过期");
+        }
+
+        // 创建新token
+        TokenContent tc = tokenManager.create(consumed);
 
         // 更新设备记录的refreshToken和最后刷新时间
         if (deviceManager != null) {
             deviceManager.updateRefreshToken(refreshToken, tc.getRefreshToken(), System.currentTimeMillis());
         }
-
-        // 删除原有token
-        tokenManager.remove(refreshToken);
 
         // 刷新服务端凭证时效
         tgtManager.refresh(tc.getTgt());
